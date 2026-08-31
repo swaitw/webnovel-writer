@@ -44,6 +44,8 @@ def _write_minimal_package(root: Path, *, plugin_version: str = "1.2.3", marketp
             [
                 "# Test",
                 "",
+                f"[![Version](https://img.shields.io/badge/version-{plugin_version}-brightgreen.svg)](.claude-plugin/marketplace.json)",
+                "",
                 "| 版本 | 说明 |",
                 "|------|------|",
                 f"| **v{plugin_version} (当前)** | test |",
@@ -87,6 +89,17 @@ def test_validate_plugin_package_detects_version_mismatch(tmp_path):
 
     assert report["ok"] is False
     assert any(item["code"] == "version.marketplace" for item in report["issues"])
+
+
+def test_validate_plugin_package_detects_readme_badge_mismatch(tmp_path):
+    _write_minimal_package(tmp_path)
+    readme = tmp_path / "README.md"
+    readme.write_text(readme.read_text(encoding="utf-8").replace("version-1.2.3", "version-1.2.2"), encoding="utf-8")
+
+    report = validate_package(tmp_path)
+
+    assert report["ok"] is False
+    assert any(item["code"] == "version.readme_badge" for item in report["issues"])
 
 
 def test_validate_plugin_package_detects_missing_skill_frontmatter(tmp_path):

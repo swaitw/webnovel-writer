@@ -85,6 +85,23 @@ Use the Agent tool to run `webnovel-writer:deconstruction-agent`.
 Prompt: reference_title={reference_title}; reference_source={reference_source}; reference_text_path={reference_text_path}; reference_text_excerpt={reference_text_excerpt}; analysis_mode={quick|deep|auto}; init_goal={当前初始化故事方向或空}; target_genre={题材或空}。只返回 init_reference_research JSON 对象，不写任何文件，不创建目录，不写 .story-system、.webnovel、设定集、大纲、正文、idea_bank.json、state.json 或任何 canon/read model 文件。
 ```
 
+调用后主流程必须记录一份 `SubagentRun` 汇总（仅供最终报告使用，不写入 canon）：
+
+```json
+{
+  "name": "deconstruction-agent",
+  "user_label": "参考作品拆解",
+  "status": "completed | partial | failed | skipped",
+  "problems": [],
+  "auto_handled": [],
+  "needs_user_action": false,
+  "duration_ms": 0,
+  "outputs": []
+}
+```
+
+`quality.passed=false`、`confidence < 0.85`、输入不足、文本不可读、降级 quick mode 或输出不完整时，必须写入 `problems`，并让最终报告进入“建议确认 / 必须处理”。
+
 处理规则：
 - 只有书名/平台、无文本或摘录时，先问能否提供摘录/路径；不能提供则把参考书仅作"方向线索"，不得编造其黄金三章、角色、设定或剧情事实。
 - 接收返回的 `init_reference_research` JSON 后，只使用 `reader_promise`、`opening_hook_patterns`、`cool_point_loops`、`protagonist_patterns`、`antagonist_pressure_patterns`、`pacing_notes`、`borrowable_structures`、`differentiation_requirements`、`init_candidates`、`quality`。
@@ -226,3 +243,66 @@ test "$(basename "${PROJECT_ROOT}")" = "${PROJECT_SLUG}"
 触发：关键文件缺失；总纲关键字段缺失；约束启用但 `idea_bank.json` 缺失或不一致。
 
 恢复：只补缺失字段，不全量重问；只重跑最小步骤（文件缺失→重跑 `webnovel.py init`；总纲缺字段→只 patch 总纲；idea_bank 不一致→只重写该文件）；重新验证，全部通过后结束。
+
+## 作者友好过程提示与恢复契约
+
+初始化开始前先说明本次会经历：收集故事核心 -> 确认创意约束 -> 生成项目骨架 -> 写入初始故事档案 -> 验证能否进入规划。过程提示用作者语言，不直接输出原始 JSON、traceback 或长命令日志；技术详情写入 `.webnovel/logs/run_last.log`：
+
+```bash
+python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "${PROJECT_ROOT}" run-log \
+  --event init-progress \
+  --payload-json "{\"stage\": \"init\"}" \
+  --format text
+```
+
+过程提示每次不超过两行，只说当前动作和影响，例如“正在生成项目骨架：会创建设定集、总纲和初始故事档案”。少打扰确认策略：默认继续收集和生成；只有核心设定、参考拆解采用、项目目录安全、写入 canon 前的最终方案需要用户拍板。
+
+需要用户裁决时使用有限选项，并说明每个选项影响；例如保留当前设定 / 修改局部 / 暂停初始化。卡住时必须说明卡点、已完成内容和恢复建议，例如“设定集已生成，Story System 初始档案缺失；重新运行 `/webnovel-init` 会只补缺失文件”。
+
+不可恢复故障才在最终报告提示 `.webnovel/logs/run_last.log`；平时只保留日志，不打扰作者。收尾必须调用作者报告 helper：
+
+```bash
+python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "${PROJECT_ROOT}" user-report \
+  --stage init \
+  --format text
+```
+
+## 作者友好最终报告契约
+
+最终回复必须面向作者，不输出原始 JSON、traceback 或长命令日志。使用固定三段式，并以一句总状态开头：
+
+```text
+总状态：已完成 / 部分完成 / 需要你处理 / 未完成。
+
+一、产生的文件与完成情况
+- ...
+
+二、过程中遇到的问题与异常耗时
+- 已自动处理：...
+- 建议确认：...
+- 必须处理：...
+
+三、下一步建议
+- ...
+```
+
+必须汇报：
+- 项目目录、`.webnovel/state.json`、`.webnovel/idea_bank.json`。
+- `设定集/世界观.md`、`设定集/力量体系.md`、`设定集/主角卡.md`、`设定集/反派设计.md`。
+- `大纲/总纲.md`、`.story-system/MASTER_SETTING.json`。
+- 是否使用参考作品拆解；用户确认前未写入 canon 的情况。
+- 缺失信息是否影响后续 `/webnovel-plan`。
+
+异常分类：
+- 已自动处理：脚本补齐目录、重跑最小初始化步骤、重新生成缺失的非内容文件等。
+- 建议确认：参考拆解质量略低、候选创意需用户再看一眼。
+- 必须处理：核心设定未确认、项目目录不安全、关键文件仍缺失。
+
+下一步建议必须使用任务化语言 + 可复制命令，例如：
+
+```text
+- 接下来可以规划第一卷：
+  /webnovel-plan 1
+```
+
+不写 token 统计；如需排查故障，只给日志路径或建议运行 `/webnovel-doctor`。

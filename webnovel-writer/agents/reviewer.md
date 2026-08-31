@@ -124,7 +124,18 @@ python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "${PROJECT_ROOT}" ind
 
 > `category` 取值规范：本 agent 只产出 5 个维度值（`setting`/`timeline`/`continuity`/`character`/`logic`）；schema 中的 `pacing`/`other` 仅为后端兼容枚举，本 agent 不主动产出。
 
-## 8. 错误处理
+## 8. SubagentRun 可汇总信号
+
+不要把 `SubagentRun` 写进 reviewer JSON，也不要输出额外文本。主流程会根据 reviewer JSON 和调用过程记录：
+
+- `status`：JSON 完整且五维结论齐全为 `completed`；维度跳过但已在 `summary` / `dimension_results` 说明为 `partial`；正文为空或无法审查为 `failed`。
+- `problems`：正文为空、读取状态失败、维度跳过、输出不完整、blocking issue、耗时异常。
+- `auto_handled`：无状态读取时跳过某个非关键维度、降级读取摘要。
+- `needs_user_action`：存在 `blocking=true` 或无法审查时为 true。
+- `duration_ms`：由主流程计时记录。
+- `outputs`：`.webnovel/tmp/review_results.json` 与审查报告路径由主流程记录。
+
+## 9. 错误处理
 
 - 无法读取角色状态 → 跳过设定一致性检查，在 summary 中标注"无法校验设定一致性：数据读取失败"
 - 无法读取上章摘要 → 跳过连贯性检查中的"上章钩子回应"项

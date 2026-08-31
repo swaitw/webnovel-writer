@@ -33,7 +33,7 @@ python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "{project_root}" memo
 python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "{project_root}" index get-reader-signals --limit 5 --last-n 20
 ```
 
-load-context 已含（不要重复查）：`story_contracts`（MASTER/volume/chapter/review）、`recent_summaries`、`urgent_loops`、`active_rules`、`protagonist`、`memory_pack`（追读力）、`genre_profile_excerpt`。只有返回空 contracts 时才直接 Read `.story-system/*.json`。
+load-context 已含（不要重复查）：`story_contracts`（MASTER/volume/chapter/review）、`recent_summaries`、`urgent_loops`、`active_rules`、`protagonist`、`memory_pack`（追读力）、`genre_profile_excerpt`、`author_style_patterns`（/webnovel-learn 累积的作者文风修正）、`style_contract`（设定集/风格契约）。只有返回空 contracts 时才直接 Read `.story-system/*.json`。
 
 裁决层（chapter 合同的 `reasoning` 对象）：`style_priority`、`pacing_strategy`、`genre`，必须在第 4 段消费。`chapter_focus` / `dynamic_context` 等 CSV 派生项仅作写法参考，不得覆盖章纲与 `chapter_directive.goal` 约束。
 
@@ -43,7 +43,7 @@ load-context 已含（不要重复查）：`story_contracts`（MASTER/volume/cha
 2. 确定卷号：优先 runtime contracts / latest commit；必要时兼容读取 `state.json` 投影。
 3. 按需深查：配角 → `query-entity`；规则 → `query-rules`；时间跨度 → `get-timeline` 或读时间线文件。时间规则：跨夜须过渡、倒计时不跳跃、不回跳。
 4. 伏笔：`urgent_loops` 已在基础包；`remaining ≤ 5` 或超期的必须处理，可选伏笔最多 5 条。
-5. 组装：动机 = 目标+处境+钩子压力；情绪底色 = 上章结尾+走向；可用能力 = 境界+设定禁用。合并 `reasoning` + `anti_patterns` + 用户明确提供的项目级文风规则（只消费、不暴露文件名）。
+5. 组装：动机 = 目标+处境+钩子压力；情绪底色 = 上章结尾+走向；可用能力 = 境界+设定禁用。合并 `reasoning` + `anti_patterns` + `author_style_patterns` + `style_contract`（作者累积的项目级文风规则，只消费、不暴露文件名）。
 6. 红线校验（第 6 段），任一 fail 回第 5 步重组。
 
 ## 4. 写作铁律
@@ -76,7 +76,18 @@ load-context 已含（不要重复查）：`story_contracts`（MASTER/volume/cha
 4. **怎么写更顺**：最关键一段。把裁决层风格 / 节奏翻成具体指导；题材基调；`writing_guidance`；`anti_patterns` 翻为自然提醒；审查得分趋势。
 5. **收在哪里**：结尾停在什么感觉，留什么未完感。
 
-## 8. 错误处理
+## 8. SubagentRun 可汇总信号
+
+不要把 `SubagentRun` JSON 写入任务书，也不要额外落盘。主流程会根据本 agent 的返回内容记录：
+
+- `status`：五段任务书完整为 `completed`；使用降级读取但仍可写为 `partial`；无法支撑起草为 `failed`。
+- `problems`：上下文不足、contracts 缺失、伏笔数据缺失、任务书不完整、耗时异常。
+- `auto_handled`：legacy fallback、`extract-context` 降级读取、跳过非阻断结构化节点。
+- `needs_user_action`：上下文严重不足或需要人工补录关键设定时为 true。
+- `duration_ms`：由主流程计时记录。
+- `outputs`：写作任务书。
+
+## 9. 错误处理
 
 | 场景 | 处理 |
 |------|------|

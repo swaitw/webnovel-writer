@@ -73,6 +73,23 @@ Prompt: chapter={chapter_num}; chapter_file={chapter_file}; project_root=${PROJE
 
 reviewer 返回后，主流程把严格 JSON 写入 `${PROJECT_ROOT}/.webnovel/tmp/review_results.json`（reviewer 不持 Write，是这份 artifact 的非写入方）。`review-pipeline` 必须把同一路径覆盖为标准 review_result artifact（含 `blocking_count`）。
 
+调用后主流程必须记录 `SubagentRun` 汇总（仅供最终报告使用）：
+
+```json
+{
+  "name": "reviewer",
+  "user_label": "写作检查",
+  "status": "completed | partial | failed | skipped",
+  "problems": [],
+  "auto_handled": [],
+  "needs_user_action": false,
+  "duration_ms": 0,
+  "outputs": []
+}
+```
+
+reviewer 跳过、失败、输出不完整、正文为空、维度跳过、blocking issue 或耗时异常，必须写入 `problems` / `auto_handled`，不得在最终报告中静默。
+
 ### Step 6：生成报告并落库
 
 ```bash
@@ -108,3 +125,74 @@ python "${SCRIPTS_DIR}/webnovel.py" --project-root "${PROJECT_ROOT}" update-stat
 3. 审查报告已生成，`review_metrics` 已写入 `index.db`，`review_metrics.json` 已输出。
 4. 审查记录已写入 `.webnovel/state.json` 兼容投影。
 5. 存在阻断问题时，用户已明确选择处理策略。
+
+## 作者友好过程提示与恢复契约
+
+审查开始前先说明本次会经历：定位待审正文 -> 刷新缺失合同 -> 写作检查 -> 生成报告和指标 -> 处理阻断裁决。过程提示用作者语言，不直接输出原始 JSON、traceback 或长命令日志；技术详情写入 `.webnovel/logs/run_last.log`：
+
+```bash
+python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "${PROJECT_ROOT}" run-log \
+  --event review-progress \
+  --payload-json "{\"stage\": \"review\", \"chapter\": {chapter_num}}" \
+  --format text
+```
+
+过程提示每次不超过两行，只说当前动作和影响，例如“正在生成审查报告：会把阻断问题和最值得改的建议放到顶部”。少打扰确认策略：无阻断时不询问；存在 blocking issue、缺待审正文、用户要求是否立即修改时才询问。
+
+需要用户裁决时使用有限选项，并说明影响；例如立即修复 / 仅保存报告稍后处理 / 放弃本次审查。卡住时必须说明卡点、已完成内容和恢复建议，例如“reviewer 结果已保存，metrics 落库失败；重新运行 `/webnovel-review {chapter_num}` 会从报告落库继续”。
+
+不可恢复故障才在最终报告提示 `.webnovel/logs/run_last.log`；平时只保留日志，不打扰作者。收尾必须调用作者报告 helper：
+
+```bash
+python -X utf8 "${SCRIPTS_DIR}/webnovel.py" --project-root "${PROJECT_ROOT}" user-report \
+  --stage review \
+  --chapter {chapter_num} \
+  --format text
+```
+
+## 作者友好最终报告契约
+
+最终回复必须面向作者，不输出原始 JSON、traceback 或长命令日志。使用固定三段式，并以一句总状态开头：
+
+```text
+总状态：已完成 / 部分完成 / 需要你处理 / 未完成。
+
+一、产生的文件与完成情况
+- ...
+
+二、过程中遇到的问题与异常耗时
+- 已自动处理：...
+- 建议确认：...
+- 必须处理：...
+
+三、下一步建议
+- ...
+```
+
+必须汇报：
+- 审查报告文件。
+- `.webnovel/tmp/review_results.json`。
+- `.webnovel/tmp/review_metrics.json`。
+- `review_metrics` 是否落库。
+- 阻断问题数量。
+- 用户裁决状态。
+- 如果无阻断，明确可以继续写作。
+
+状态规则：
+- 有 blocking 问题且用户未选择处理策略时，最终状态为“需要你处理”。
+- 只保存报告、稍后处理时，最终状态为“需要你处理”或“部分完成”。
+- reviewer 跳过、失败或输出不完整时，最终状态不得写“已完成”。
+
+异常分类：
+- 已自动处理：重复生成报告、覆盖本次旧审查中间文件、成功补写 metrics。
+- 建议确认：非阻断但高收益修改建议、命名或设定细节建议看一眼。
+- 必须处理：blocking issue、缺待审正文、reviewer 输出不完整、metrics 落库失败。
+
+下一步建议必须使用任务化语言 + 可复制命令，例如：
+
+```text
+- 审查无阻断，可以继续写下一章：
+  /webnovel-write {next_chapter}
+```
+
+不写 token 统计；如需排查故障，只给日志路径或建议运行 `/webnovel-doctor`。

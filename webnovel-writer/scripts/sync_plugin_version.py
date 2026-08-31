@@ -16,6 +16,7 @@ VERSION_PATTERN = re.compile(r"^\d+\.\d+\.\d+$")
 README_ROW_PATTERN = re.compile(
     r"^\| \*\*v(?P<version>[^\s*]+)(?P<current> \(当前\))?\*\* \| (?P<notes>.*) \|$"
 )
+README_BADGE_PATTERN = re.compile(r"(badge/version-)(?P<version>\d+\.\d+\.\d+)(-brightgreen\.svg)")
 README_HEADERS = {"| 版本 | 说明 |", "| 版本 | 主要变化 |"}
 README_SEPARATORS = {"|------|------|", "|------|----------|"}
 
@@ -77,7 +78,21 @@ def get_readme_current_version(content: str) -> str:
     return str(current_rows[0]["version"])
 
 
+def get_readme_badge_version(content: str) -> str:
+    match = README_BADGE_PATTERN.search(content)
+    if not match:
+        raise ValueError("README.md version badge not found")
+    return str(match.group("version"))
+
+
+def update_readme_badge(content: str, version: str) -> str:
+    if not README_BADGE_PATTERN.search(content):
+        raise ValueError("README.md version badge not found")
+    return README_BADGE_PATTERN.sub(rf"\g<1>{version}\g<3>", content, count=1)
+
+
 def update_readme_release(content: str, version: str, release_notes: str | None) -> str:
+    content = update_readme_badge(content, version)
     lines = content.splitlines()
 
     try:
@@ -146,6 +161,7 @@ def check_versions(expected_version: str | None = None) -> int:
     plugin_version = str(plugin_payload.get("version", ""))
     marketplace_version = str(marketplace_plugin.get("version", ""))
     readme_version = get_readme_current_version(readme_content)
+    readme_badge_version = get_readme_badge_version(readme_content)
 
     mismatches: list[str] = []
     if plugin_version != marketplace_version:
@@ -154,6 +170,8 @@ def check_versions(expected_version: str | None = None) -> int:
         )
     if plugin_version != readme_version:
         mismatches.append(f"plugin.json={plugin_version}, README.md={readme_version}")
+    if plugin_version != readme_badge_version:
+        mismatches.append(f"plugin.json={plugin_version}, README badge={readme_badge_version}")
     if expected_version and plugin_version != expected_version:
         mismatches.append(
             f"expected={expected_version}, current release metadata={plugin_version}"

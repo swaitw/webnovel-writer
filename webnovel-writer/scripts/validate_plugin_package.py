@@ -152,6 +152,7 @@ def _check_readme_version(root: Path, plugin_version: str, issues: list[dict[str
     try:
         content = readme.read_text(encoding="utf-8")
         readme_version = sync_plugin_version.get_readme_current_version(content)
+        readme_badge_version = sync_plugin_version.get_readme_badge_version(content)
     except Exception as exc:
         issues.append(_issue("version.readme.parse", message=str(exc), path=str(readme), repair="保持 README 版本表格式与 sync_plugin_version.py 一致。"))
         return
@@ -160,6 +161,15 @@ def _check_readme_version(root: Path, plugin_version: str, issues: list[dict[str
             _issue(
                 "version.readme",
                 message=f"plugin.json={plugin_version}, README.md={readme_version}",
+                path=str(readme),
+                repair="运行 sync_plugin_version.py --version X.Y.Z --release-notes ...。",
+            )
+        )
+    if plugin_version and readme_badge_version != plugin_version:
+        issues.append(
+            _issue(
+                "version.readme_badge",
+                message=f"plugin.json={plugin_version}, README badge={readme_badge_version}",
                 path=str(readme),
                 repair="运行 sync_plugin_version.py --version X.Y.Z --release-notes ...。",
             )

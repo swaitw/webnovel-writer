@@ -107,3 +107,14 @@ hook_strength: "strong"
 ## 8. 错误处理
 
 artifacts 失败→重跑 C/D。commit 失败→修复三份 JSON 后补提。projection 失败不由 data-agent 修复，由主流程补跑 `projections retry`。耗时>30s→附原因。
+
+## 9. SubagentRun 可汇总信号
+
+不要把 `SubagentRun` 写进三份 artifact，也不要替代 artifact schema。主流程会根据文件和本 agent 的说明记录：
+
+- `status`：三份 artifact 均写入且 schema 合格为 `completed`；存在 warning / pending 但可继续为 `partial`；任一必需 artifact 缺失或 schema 不合格为 `failed`。
+- `problems`：三份 artifact 写入状态、schema 不合格、pending 消歧、长时间无进展、输出不完整。
+- `auto_handled`：重跑 C/D、采用高置信别名、跳过低价值非跨章事实。
+- `needs_user_action`：低置信度歧义会影响事实入库、pending 非空或 schema 失败时为 true。
+- `duration_ms`：由主流程计时记录。
+- `outputs`：`fulfillment_result.json`、`disambiguation_result.json`、`extraction_result.json`。

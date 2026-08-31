@@ -111,7 +111,18 @@ color: magenta
 
 `init_candidates` 是候选创意约束包，不是最终设定；每个候选都必须显式说明与参考书的差异化处理。
 
-## 8. 边界、确认与错误处理
+## 8. SubagentRun 可汇总信号
+
+不要把 `SubagentRun` 写进 `init_reference_research` 顶层，也不要额外落盘。主流程会根据返回 JSON 和调用过程记录：
+
+- `status`：`quality.passed=true` 且候选完整为 `completed`；降级 quick mode 或有 warning 为 `partial`；输入不足、文本不可读或质量失败为 `failed`。
+- `problems`：输入不足、质量不过线、降级 quick mode、输出不完整、参考事实污染风险。
+- `auto_handled`：deep 降级 quick、孤立情节兜底、角色合并去重。
+- `needs_user_action`：`quality.passed=false`、`confidence < 0.85`、`warnings` 非空或 `canon_contamination_warnings` 非空时为 true。
+- `duration_ms`：由主流程计时记录。
+- `outputs`：`init_reference_research` JSON。
+
+## 9. 边界、确认与错误处理
 
 边界：
 - 不生成新书 canon，不替用户做最终设定决定。
